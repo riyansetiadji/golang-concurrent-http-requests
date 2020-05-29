@@ -3,28 +3,42 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"time"
 )
 
-var client = http.Client{
+var client = &http.Client{
 	Transport: &http.Transport{
-		MaxIdleConnsPerHost: 200,
+		MaxIdleConnsPerHost: 200, // Match with numWorkers
 	},
 }
 
-func sendRequest(n int) string {
-	url := "http://localhost:3030/users"
-	data := fmt.Sprintf(`{"index": %d}`, n)
-	var jsonStr = []byte(data)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-	req.Close = true
-	req.Header.Set("Content-Type", "application/json")
+func sendRequest(input int) string {
+	var resp *http.Response
+	var req *http.Request
+	var err error
 
-	resp, err := client.Do(req)
+	if input%2 == 0 {
+		//POST
+		url := "http://localhost:3030/users"
+		data := fmt.Sprintf(`{"index": %d}`, input)
+		var jsonStr = []byte(data)
+
+		req, err = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err = client.Do(req)
+		//resp, err = client.Post(url, "application/json", bytes.NewBuffer(jsonStr))
+	} else {
+		//GET
+		resp, err = client.Get("http://localhost:3030/")
+	}
+
 	if err != nil {
 		return err.Error()
 	}
+	io.Copy(ioutil.Discard, resp.Body)
 	defer resp.Body.Close()
 	return resp.Status
 }
@@ -46,8 +60,8 @@ func main() {
 	jobs := make(chan int)
 	results := make(chan string)
 
-	numCalls := 30000
-	numWorkers := 50
+	numCalls := 100000
+	numWorkers := 200
 
 	start := time.Now()
 
